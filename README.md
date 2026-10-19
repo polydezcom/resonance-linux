@@ -1,2 +1,2 @@
 # resonance-linux
-Free and open source music player
+Free and open source music player with slowed & reverb capabilities
