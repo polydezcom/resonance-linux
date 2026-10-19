@@ -1,0 +1,23 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <file alias="alert.svg">icons/alert.svg</file>
+        <file alias="app.svg">icons/app.svg</file>
+        <file alias="folder-open.svg">icons/folder-open.svg</file>
+        <file alias="list.svg">icons/list.svg</file>
+        <file alias="moon.svg">icons/moon.svg</file>
+        <file alias="music.svg">icons/music.svg</file>
+        <file alias="pause.svg">icons/pause.svg</file>
+        <file alias="play.svg">icons/play.svg</file>
+        <file alias="refresh.svg">icons/refresh.svg</file>
+        <file alias="skip-back.svg">icons/skip-back.svg</file>
+        <file alias="skip-forward.svg">icons/skip-forward.svg</file>
+        <file alias="sliders.svg">icons/sliders.svg</file>
+        <file alias="stop.svg">icons/stop.svg</file>
+        <file alias="sun.svg">icons/sun.svg</file>
+        <file alias="volume-1.svg">icons/volume-1.svg</file>
+        <file alias="volume-2.svg">icons/volume-2.svg</file>
+        <file alias="volume-x.svg">icons/volume-x.svg</file>
+        <file alias="x.svg">icons/x.svg</file>
+    </qresource>
+</RCC>
