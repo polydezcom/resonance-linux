@@ -3,47 +3,74 @@
 A folder-first, fully offline desktop music player built with C++20, Qt 6 and
 QML. Linux is the primary target; the core is portable to Windows and macOS.
 
-**Status: M1 — runnable skeleton.** The app builds, scans a folder recursively,
-sorts tracks naturally, plays MP3/FLAC/WAV/Ogg Vorbis through a custom
-pull-based audio engine, and has the dark/light shell with transport controls.
-Playlists, gapless queue playback, EQ, time-stretch, reverb, waveform and MPRIS
-arrive in later milestones.
+**Status: M2 — folder playback, queue, gapless advance and metadata.**
 
-## What works in M1
+The app opens a folder, scans it recursively, reads tags and cover art, and
+plays a gapless natural-order queue with shuffle, repeat, next/previous track,
+folder navigation and session restore. EQ, time-stretch, reverb, waveform and
+MPRIS are still ahead.
 
-- Custom Qt Quick Controls 2 look (Basic style + own controls), dark and light
-  themes, six accent colors, animated hover/focus states.
-- Open a folder with the dialog, drag-and-drop a folder or files anywhere, or
-  pass a folder on the command line.
-- Recursive background scan; natural sort (`2 - Song` before `10 - Song`) via
-  `QCollator` numeric mode.
-- Track list with folder grouping, keyboard navigation (arrows + Enter),
-  double-click to play, current-track highlight and error banner.
-- Custom audio engine:
-  - decode → device-rate float32 stereo → lock-free SPSC ring → real-time
-    miniaudio callback;
-  - play/pause, stop, seek, smoothed volume;
-  - no allocations, locks or Qt calls in the audio callback;
-  - null audio backend for deterministic tests (`RESONANCE_NULL_AUDIO=1`).
-- Formats: MP3, FLAC, WAV, Ogg Vorbis (miniaudio + stb_vorbis).
-- Last folder is remembered and restored paused on next launch; theme, accent,
-  volume and right-panel state persist via `QSettings`.
-- Shortcuts: `Space` play/pause, `Ctrl+O` open folder, `Ctrl+←/→` seek 5 s,
-  `Ctrl+↑/↓` volume, `Ctrl+T` playback tools, `F5` rescan, `Ctrl+Q` quit.
-- Right-hand playback-tools panel is the shell for M4/M5; it currently shows
-  the roadmap and now-playing details.
+## What works
 
-### Known M1 limitations
+### Playback and folder queue
 
-- No queue, gapless advance, next/previous track, shuffle or repeat yet (M2).
-- Track rows show `—` for duration; tags/cover art and metadata caching are M2.
-- No playlists/M3U yet (M3), no EQ (M4), no speed/pitch/reverb/A–B loop (M5),
-  no waveform/spectrum/mini player/MPRIS (M6).
-- Seeking a stream whose duration cannot be determined is refused by the
-  transport UI. Ogg Vorbis duration is available with the current stb_vorbis
-  integration, but unusual streams may still report `0:00`.
-- Opening a new file currently joins the old decoder thread before starting;
-  this is quick for local files, but will move fully off the UI thread in M2.
+- Open a folder with the dialog, drag-and-drop a folder/files anywhere, or pass
+  a folder on the command line.
+- Recursive background scan; natural sort (`2 - Song` before `10 - Song`).
+- Folder tree in the sidebar with expand/collapse, recursive track counts,
+  current-folder highlight and direct folder playback.
+- Clicking a folder plays its recursive contents immediately; clicking a track
+  plays the folder queue from that point.
+- Gapless playback across track boundaries. The decoder prefetches the next
+  file and pushes a boundary marker; the audio callback switches the audible
+  track at the exact frame without stopping the stream.
+- Next/previous track, previous restarting the current track at the queue start.
+- Shuffle within the selected folder, and repeat modes **Off / Track / Folder**.
+- Next/previous folder (`Ctrl+Alt+←/→`) using the natural folder-tree order.
+- Play/pause, stop, seek, smoothed volume, queue position (`1 / 12`).
+
+### Tags and artwork
+
+- TagLib 2.x metadata: title, artist, album, track number, year and duration.
+- Filename fallback when tags are missing; tracks remain usable before the
+  background metadata batches finish.
+- Embedded cover art (MP3/FLAC/MP4/OGG via TagLib complex properties) with a
+  sidecar fallback (`cover.jpg`, `folder.png`, `front.jpg`, etc.).
+- Covers are resized and cached in the standard cache location; the transport
+  and playback-tools panel show the current track's artwork.
+- Metadata is read in 128-track background batches; the UI never waits for a
+  10k-file tag scan.
+
+### Session state
+
+- Last folder, selected folder, last track and position are saved every 5 s and
+  on normal quit.
+- On launch the session is restored **paused** at the saved track and position.
+- Theme, accent, volume, shuffle/repeat modes and right-panel state persist via
+  `QSettings`.
+
+### UI and shortcuts
+
+- Custom dark/light theme, six accent colors, rounded surfaces, custom controls.
+- Collapsible playback-tools panel with now-playing details.
+- Keyboard: `Space`, `Ctrl+O`, `Ctrl+←/→` seek, `Ctrl+↑/↓` volume,
+  `Alt+←/→` tracks, `Ctrl+Alt+←/→` folders, `S` shuffle, `R` repeat,
+  `Ctrl+T` tools, `F5` rescan, `Ctrl+Q` quit.
+
+## Known M2 limitations
+
+- Search/filter over the current folder is not implemented yet (M6).
+- Cover art is shown for the current track, not as a thumbnail in every row.
+- The filesystem watch and true incremental diff are not implemented; `F5`
+  performs a background path-only rescan and reuses cached tags/covers.
+- Gapless uses the current engine only. The DSP chain (EQ/reverb/SoundTouch)
+  will need a continuous stream across boundaries in M4/M5.
+- TagLib **2.0+** is required for metadata. Without it the app still builds and
+  plays files using filename titles and no durations/covers (CMake warns).
+- No playlists/M3U (M3), EQ (M4), speed/pitch/reverb/A–B loop (M5), waveform,
+  spectrum, mini player, MPRIS or media keys (M6).
+- The native folder dialog logs an xdg-desktop-portal app-ID warning until a
+  `.desktop` file is installed; harmless.
 
 ## Build
 
@@ -52,34 +79,38 @@ Requirements:
 - CMake 3.21+
 - C++20 compiler (GCC 11+, Clang 14+, MSVC 19.3+)
 - Qt **6.5 or newer** (Core, Gui, Qml, Quick, QuickControls2, Concurrent, Test)
+- TagLib **2.0+** for tags and covers (optional at build time)
 - Ninja (recommended)
-- On Linux: a working ALSA/PulseAudio/PipeWire output
+- On Linux: ALSA/PulseAudio/PipeWire output
 
 The project vendors miniaudio 0.11.22 and stb_vorbis, so no network access is
-needed to build the current milestone.
+needed to build or run the player.
 
 ### Fedora
 
 ```bash
 sudo dnf install cmake ninja-build gcc-c++ \
-    qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg
+    qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg \
+    taglib-devel
 ```
 
-Later milestones (optional for M1):
-
-```bash
-sudo dnf install taglib-devel soundtouch-devel ffmpeg-devel
-```
-
-`ffmpeg-devel` is available from RPM Fusion on Fedora.
+`taglib-devel` on current Fedora is TagLib 2.x. SoundTouch/FFmpeg development
+packages are only needed for M5/later.
 
 ### Ubuntu
 
-Ubuntu 24.04 ships Qt 6.4, which is older than the required Qt 6.5. Use a newer
-Ubuntu release, or install Qt 6.5+ with the Qt online installer and point
-CMake at it with `-DCMAKE_PREFIX_PATH=$HOME/Qt/6.8.0/gcc_64`.
+Ubuntu 24.04 ships Qt 6.4, which is older than the required Qt 6.5, and its
+`libtag1-dev` is TagLib 1.x. Use a newer Ubuntu release or install Qt 6.5+ and
+TagLib 2.x locally, then point CMake at them:
 
-On a release with Qt 6.5+:
+```bash
+cmake -S . -B build -G Ninja \
+    -DCMAKE_PREFIX_PATH="$HOME/Qt/6.8.0/gcc_64" \
+    -DRESONANCE_TAGLIB_ROOT=/path/to/taglib-2.x/prefix
+```
+
+Otherwise install the Qt 6 QML modules and `libtag1-dev`; the player will build
+without tag metadata and print a CMake warning.
 
 ```bash
 sudo apt install build-essential cmake ninja-build \
@@ -90,16 +121,21 @@ sudo apt install build-essential cmake ninja-build \
     libqt6svg6-dev libgl1-mesa-dev
 ```
 
-Later milestones: `libtag1-dev libsoundtouch-dev libavcodec-dev
-libavformat-dev libavutil-dev libswresample-dev`.
-
 ### Arch Linux
 
 ```bash
-sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-declarative qt6-svg
+sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-declarative qt6-svg taglib
 ```
 
-Later milestones: `taglib soundtouch ffmpeg`.
+### Offline TagLib sysroot (development)
+
+If the distro `-devel` package is unavailable, CMake automatically uses a local
+TagLib tree at `build/local-deps/usr` when it exists. A normal install can also
+be selected explicitly:
+
+```bash
+cmake -S . -B build -G Ninja -DRESONANCE_TAGLIB_ROOT=/usr
+```
 
 ### Build and run
 
@@ -110,7 +146,7 @@ ctest --test-dir build --output-on-failure
 ./build/resonance
 ```
 
-Open a folder from the UI, or start with one directly:
+Start directly in a folder:
 
 ```bash
 ./build/resonance /path/to/music
@@ -124,34 +160,35 @@ Disable tests with `-DRESONANCE_BUILD_TESTS=OFF`.
 ctest --test-dir build --output-on-failure
 ```
 
-Current coverage:
-
 - `test_ring_buffer` — SPSC ordering, wraparound, partial transfers and a
   concurrent producer/consumer stress test.
-- `test_biquad` — flat/bypass response, boost/cut at the centre frequency and
-  stability.
-- `test_audio_engine` — full null-device lifecycle: play, duration, position,
-  pause, resume, seek, end-of-stream and stop.
-- `test_natural_sort` — numeric runs, paths, case-insensitive tie-breaking and
-  strict weak ordering.
-- `test_folder_scanner` — recursive scan, natural order, hidden/unsupported
-  files, missing and empty folders.
+- `test_biquad` — flat response, boost/cut, stability.
+- `test_audio_engine` — play/pause/seek/stop, gapless queue advance, paused
+  restore position and user next/previous navigation on a null device.
+- `test_play_queue` — natural/repeat/shuffle ordering, user next vs. repeat
+  track, and strict queue semantics.
+- `test_natural_sort` — numeric runs, paths and tie-breaking.
+- `test_folder_scanner` — recursion, natural order, hidden/unsupported files.
+- `test_folder_tree` — nested tree construction, track counts, expansion,
+  current folder and DFS folder navigation.
+- `test_metadata` — filename fallback, TagLib duration and sidecar cover cache.
 
-For headless development, `RESONANCE_NULL_AUDIO=1` selects miniaudio's null
-device. The audio-engine test sets this automatically.
+`RESONANCE_NULL_AUDIO=1` selects miniaudio's null backend for headless work.
+The audio-engine test sets it automatically.
 
 ## Architecture
 
 ```
 src/core/        Pure C++20 engine and DSP (no Qt GUI dependency)
-  audio/         AudioEngine, decoder interface, miniaudio decoder,
-                 lock-free SPSC ring buffer
+  audio/         AudioEngine, decoders, SPSC sample ring, track boundary queue
+  model/         PlayQueue (natural/repeat/shuffle order)
   dsp/           Biquad (EQ building block)
-src/library/     Scanner, natural sort, supported formats (QtCore/Concurrent)
+src/library/     Scanner, TagLib metadata, metadata batches, cover cache,
+                 natural sort, supported formats
 src/ui/
-  controllers/   QML-facing PlayerController, LibraryController, TrackListModel,
-                 AppSettings
-  qml/           Main window, custom controls, theme, panels
+  controllers/   PlayerController, LibraryController, TrackListModel,
+                 FolderTreeModel, AppSettings
+  qml/           Main window, custom controls, theme, folder tree, panels
 resources/       In-house SVG icons
 tests/           Qt Test suites
 third_party/     Vendored miniaudio and stb_vorbis
@@ -160,27 +197,25 @@ third_party/     Vendored miniaudio and stb_vorbis
 Audio path:
 
 ```
-decoder thread → 4 s SPSC ring → audio callback
-                                  → (M5: SoundTouch → EQ → reverb)
-                                  → gain/limiter → device
+decoder thread → 5 s SPSC ring + boundary markers → audio callback
+                                                     → gain/limiter → device
 ```
 
-The UI polls atomics from a 33 ms timer and emits Qt signals from the UI thread.
-The audio callback itself performs no allocation, locking, logging or signal
-emission.
+The decoder prefetches the next queue item and pushes a `TrackBoundary` at the
+end of the current track. The callback advances the audible queue index,
+duration and position when it consumes that frame, so metadata changes exactly
+when the next track becomes audible. A seek flushes the ring and boundary queue
+through a generation handshake; the real-time callback never locks or allocates.
 
 ## Roadmap
 
-- **M2** — recursive folder playback/queue, natural subfolder order, gapless
-  advance, next/previous folder, shuffle/repeat, tag metadata and covers,
-  restore track/position, 10k-file responsiveness.
 - **M3** — playlists, drag reordering, queue/play-next, JSON persistence,
   M3U/M3U8 and PLS import/export.
 - **M4** — 10-band graphic EQ, preamp, built-in and user presets.
 - **M5** — SoundTouch tempo/pitch, tape mode, Freeverb reverb, A–B loop,
   per-track settings.
 - **M6** — waveform seek bar, spectrum, mini player, always-on-top, MPRIS,
-  command palette and accessibility polish.
+  command palette, search/filter and accessibility polish.
 
 ## License
 
