@@ -27,11 +27,25 @@ Rectangle {
             Layout.preferredWidth: 64
             Layout.preferredHeight: 64
             radius: 15
+            clip: true
             opacity: Player.hasTrack ? 1.0 : 0.5
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.lighter(Theme.accent, 1.35) }
-                GradientStop { position: 0.55; color: Theme.accent }
-                GradientStop { position: 1.0; color: Qt.darker(Theme.accent, 1.35) }
+
+            Rectangle {
+                anchors.fill: parent
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.lighter(Theme.accent, 1.35) }
+                    GradientStop { position: 0.55; color: Theme.accent }
+                    GradientStop { position: 1.0; color: Qt.darker(Theme.accent, 1.35) }
+                }
+            }
+
+            Image {
+                anchors.fill: parent
+                source: Player.coverUrl
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: false
+                visible: status === Image.Ready
             }
 
             Icon {
@@ -39,6 +53,7 @@ Rectangle {
                 name: "music"
                 size: 26
                 color: Theme.onAccent
+                visible: Player.coverUrl.length === 0
             }
         }
 
@@ -68,7 +83,12 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: Player.status
+                text: Player.queueSize > 0
+                      ? qsTr("%1 / %2 · %3")
+                        .arg(Player.queueIndex + 1)
+                        .arg(Player.queueSize)
+                        .arg(Player.status)
+                      : Player.status
                 color: Player.error.length > 0 ? Theme.danger
                                                : Player.audioReady ? Theme.textFaint : Theme.danger
                 font.family: Theme.fontFamily
@@ -84,14 +104,24 @@ Rectangle {
 
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                spacing: 4
+                spacing: 3
+
+                IconButton {
+                    iconName: "shuffle"
+                    iconSize: 15
+                    buttonSize: 30
+                    accent: Player.shuffle
+                    onClicked: Player.toggleShuffle()
+                    accessibleLabel: Player.shuffle ? qsTr("Disable shuffle") : qsTr("Shuffle folder")
+                }
 
                 IconButton {
                     iconName: "skip-back"
                     iconSize: 18
                     buttonSize: 34
-                    enabled: false
-                    accessibleLabel: qsTr("Previous track (available in M2)")
+                    enabled: Player.hasTrack
+                    onClicked: Player.previous()
+                    accessibleLabel: qsTr("Previous track")
                 }
 
                 IconButton {
@@ -108,16 +138,30 @@ Rectangle {
                     iconName: "skip-forward"
                     iconSize: 18
                     buttonSize: 34
-                    enabled: false
-                    accessibleLabel: qsTr("Next track (available in M2)")
+                    enabled: Player.hasTrack
+                    onClicked: Player.next()
+                    accessibleLabel: qsTr("Next track")
                 }
 
-                Item { Layout.preferredWidth: 8 }
+                IconButton {
+                    iconName: Player.repeatMode === 1 ? "repeat-one" : "repeat"
+                    iconSize: 15
+                    buttonSize: 30
+                    accent: Player.repeatMode > 0
+                    onClicked: Player.cycleRepeat()
+                    accessibleLabel: Player.repeatMode === 0
+                                     ? qsTr("Repeat off")
+                                     : Player.repeatMode === 1
+                                       ? qsTr("Repeat track")
+                                       : qsTr("Repeat folder")
+                }
+
+                Item { Layout.preferredWidth: 4 }
 
                 IconButton {
                     iconName: "stop"
-                    iconSize: 15
-                    buttonSize: 32
+                    iconSize: 14
+                    buttonSize: 30
                     enabled: Player.hasTrack
                     onClicked: Player.stop()
                     accessibleLabel: qsTr("Stop")

@@ -150,9 +150,13 @@ Rectangle {
 
                 required property int index
                 required property string title
+                required property string artist
+                required property string album
                 required property string path
                 required property string folder
                 required property int durationMs
+                required property int trackNumber
+                required property int discNumber
 
                 readonly property bool isCurrent: Player.path === path
                 readonly property bool isSelected: trackList.currentIndex === index
@@ -185,9 +189,16 @@ Rectangle {
                     spacing: 12
 
                     Text {
-                        Layout.preferredWidth: 28
-                        text: (row.index + 1) < 10 ? "0" + (row.index + 1)
-                                                   : String(row.index + 1)
+                        Layout.preferredWidth: 32
+                        text: {
+                            if (row.trackNumber > 0) {
+                                const disc = row.discNumber > 1 ? row.discNumber + "-" : ""
+                                return disc + (row.trackNumber < 10 ? "0" : "")
+                                    + row.trackNumber
+                            }
+                            return (row.index + 1) < 10 ? "0" + (row.index + 1)
+                                                        : String(row.index + 1)
+                        }
                         color: row.isCurrent ? Theme.accent : Theme.textFaint
                         font.family: Theme.monoFamily
                         font.pixelSize: 11
@@ -224,7 +235,12 @@ Rectangle {
 
                         Text {
                             Layout.fillWidth: true
-                            text: row.folder.length > 0 ? row.folder : qsTr("This folder")
+                            text: row.artist.length > 0
+                                  ? (row.album.length > 0
+                                     ? row.artist + " · " + row.album
+                                     : row.artist)
+                                  : (row.folder.length > 0
+                                     ? row.folder : qsTr("This folder"))
                             color: Theme.textFaint
                             font.family: Theme.fontFamily
                             font.pixelSize: 11
@@ -286,18 +302,13 @@ Rectangle {
             visible: Library.hasTracks
 
             Text {
-                text: qsTr("Enter to play")
+                Layout.fillWidth: true
+                text: qsTr("Enter play · Space pause · Alt+←/→ tracks · Ctrl+Alt+←/→ folders")
                 color: Theme.textFaint
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
+                elide: Text.ElideRight
             }
-            Text {
-                text: qsTr("Space to pause")
-                color: Theme.textFaint
-                font.family: Theme.fontFamily
-                font.pixelSize: 10
-            }
-            Item { Layout.fillWidth: true }
             Text {
                 text: qsTr("Drag files or folders anywhere")
                 color: Theme.textFaint

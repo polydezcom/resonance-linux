@@ -6,7 +6,6 @@ Rectangle {
     id: sidebar
 
     signal openFolderRequested()
-    signal playFolderRequested()
 
     implicitWidth: Theme.sidebarWidth
     color: Theme.sidebar
@@ -72,84 +71,11 @@ Rectangle {
         }
 
         Item { Layout.preferredHeight: 6 }
-        SectionLabel { text: "LIBRARY" }
 
-        Rectangle {
-            id: folderCard
+        FolderTreePane {
             Layout.fillWidth: true
-            Layout.preferredHeight: 58
-            radius: Theme.radius
-            color: folderMouse.containsMouse && Library.hasTracks
-                   ? Theme.hover : Theme.selected
-            border.width: 1
-            border.color: Theme.border
-
-            Behavior on color {
-                ColorAnimation { duration: Theme.animFast }
-            }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 10
-                spacing: 10
-
-                Icon {
-                    name: Library.scanning ? "refresh" : "folder-open"
-                    size: 18
-                    color: Theme.accent
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 1
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: Library.folderName
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 13
-                        font.weight: Font.Medium
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: Library.scanning
-                              ? qsTr("Scanning…")
-                              : Library.hasTracks
-                                ? qsTr("%1 tracks").arg(Library.trackCount)
-                                : qsTr("No tracks loaded")
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
-                    }
-                }
-
-                Icon {
-                    name: "play"
-                    size: 13
-                    color: Theme.accent
-                    visible: Library.hasTracks && !Library.scanning
-                    Layout.alignment: Qt.AlignVCenter
-                }
-            }
-
-            MouseArea {
-                id: folderMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                enabled: Library.hasTracks
-                cursorShape: Library.hasTracks ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: sidebar.playFolderRequested()
-                Accessible.name: qsTr("Play %1").arg(Library.folderName)
-            }
-
-            Accessible.role: Accessible.ListItem
-            Accessible.name: qsTr("Current folder: %1").arg(Library.folderName)
+            Layout.fillHeight: true
+            Layout.minimumHeight: 110
         }
 
         Rectangle {
@@ -186,8 +112,6 @@ Rectangle {
                 }
             }
         }
-
-        Item { Layout.fillHeight: true }
 
         SectionLabel { text: "ACCENT" }
 
@@ -238,7 +162,7 @@ Rectangle {
 
         Text {
             Layout.fillWidth: true
-            text: "v0.1 · M1"
+            text: "v0.2 · M2"
             color: Theme.textFaint
             font.family: Theme.monoFamily
             font.pixelSize: 10

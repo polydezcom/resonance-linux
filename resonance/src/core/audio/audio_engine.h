@@ -1,13 +1,16 @@
 #pragma once
 
+#include "core/model/play_queue.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace resonance {
 
 /**
- * Pull-based playback engine.
+ * Pull-based playback engine with a gapless queue.
  *
  * Control methods are called from the UI thread. They only touch atomics or
  * stop the decoder thread; the real-time miniaudio callback never blocks and
@@ -26,7 +29,26 @@ public:
     void shutdown();
     bool isInitialized() const;
 
+    /// Replace the queue. startPositionSeconds is only meaningful on restore.
+    void setQueue(const std::vector<std::string> &paths, int startIndex,
+                  double startPositionSeconds = 0.0, bool autoPlay = true);
+    void clearQueue();
+
+    /// Convenience for dropping a single file.
     void playFile(const std::string &path);
+    void playQueueIndex(int index);
+    void next();
+    void previous();
+
+    void setShuffle(bool shuffle);
+    bool shuffle() const;
+    void setRepeatMode(RepeatMode mode);
+    RepeatMode repeatMode() const;
+
+    int currentIndex() const;
+    int queueSize() const;
+    std::string queuePathAt(int index) const;
+
     void pause();
     void resume();
     void togglePause();
@@ -53,9 +75,9 @@ public:
     std::uint64_t underrunCount() const;
 
 private:
-    void startPlayback(const std::string &path, std::uint64_t startFrame);
+    void startAtIndex(int index, std::uint64_t startFrame, bool autoPlay);
     void render(float *output, std::uint32_t frameCount);
-    void decodeLoop(std::string path);
+    void decodeLoop(std::uint64_t initialSeekFrame);
     void stopDecoderThread();
     bool requestFlush();
     void setError(const std::string &error);

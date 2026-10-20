@@ -19,6 +19,39 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: 10
+
+            Rectangle {
+                Layout.preferredWidth: 54
+                Layout.preferredHeight: 54
+                radius: 12
+                clip: true
+
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.lighter(Theme.accent, 1.25) }
+                        GradientStop { position: 1.0; color: Qt.darker(Theme.accent, 1.25) }
+                    }
+                }
+
+                Image {
+                    anchors.fill: parent
+                    source: Player.coverUrl
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                    visible: status === Image.Ready
+                }
+
+                Icon {
+                    anchors.centerIn: parent
+                    visible: Player.coverUrl.length === 0
+                    name: "music"
+                    size: 22
+                    color: Theme.onAccent
+                }
+            }
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -170,6 +203,15 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
+                    text: Player.hasTrack ? Player.subtitle : qsTr("Open a folder to begin.")
+                    color: Theme.textMuted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    Layout.fillWidth: true
                     text: Player.hasTrack ? Player.path : qsTr("Open a folder to begin.")
                     color: Theme.textFaint
                     font.family: Theme.monoFamily
@@ -188,6 +230,15 @@ Rectangle {
                         font.pixelSize: 10
                     }
                     Item { Layout.fillWidth: true }
+                    Text {
+                        visible: Player.queueSize > 0
+                        text: qsTr("%1 / %2")
+                              .arg(Player.queueIndex + 1)
+                              .arg(Player.queueSize)
+                        color: Theme.textFaint
+                        font.family: Theme.monoFamily
+                        font.pixelSize: 10
+                    }
                     Text {
                         text: Player.durationMs > 0 ? Player.formatTime(Player.durationMs) : "--:--"
                         color: Theme.textMuted

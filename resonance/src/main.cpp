@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("Resonance"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("resonance.local"));
     QCoreApplication::setApplicationName(QStringLiteral("Resonance"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.2.0"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Resonance"));
     QGuiApplication::setDesktopFileName(QStringLiteral("resonance"));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));

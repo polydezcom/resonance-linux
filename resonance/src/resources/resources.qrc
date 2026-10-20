@@ -19,5 +19,12 @@
         <file alias="volume-2.svg">icons/volume-2.svg</file>
         <file alias="volume-x.svg">icons/volume-x.svg</file>
         <file alias="x.svg">icons/x.svg</file>
+        <file alias="folder.svg">icons/folder.svg</file>
+        <file alias="chevron-right.svg">icons/chevron-right.svg</file>
+        <file alias="chevron-left.svg">icons/chevron-left.svg</file>
+        <file alias="chevron-down.svg">icons/chevron-down.svg</file>
+        <file alias="shuffle.svg">icons/shuffle.svg</file>
+        <file alias="repeat.svg">icons/repeat.svg</file>
+        <file alias="repeat-one.svg">icons/repeat-one.svg</file>
     </qresource>
 </RCC>

@@ -1,5 +1,6 @@
 #include "core/audio/audio_engine.h"
 
+#include "core/audio/boundary_queue.h"
 #include "core/audio/miniaudio_decoder.h"
 #include "core/audio/spsc_ring_buffer.h"
 
@@ -43,6 +44,10 @@ struct AudioEngine::Impl
     float gainSmoothing = 0.0015f;
 
     SpscRingBuffer ring{kRingFrames, 2};
+    BoundaryQueue boundaries;
+
+    std::mutex queueMutex;
+    PlayQueue queue;
 
     std::thread decoderThread;
     std::atomic<bool> stopRequested{false};
@@ -54,8 +59,9 @@ struct AudioEngine::Impl
     std::atomic<bool> ended{false};
     std::atomic<bool> eos{false};
 
-    std::atomic<std::uint64_t> positionAnchor{0};
-    std::atomic<std::uint64_t> framesSinceAnchor{0};
+    std::atomic<int> audibleIndex{-1};
+    std::atomic<std::uint64_t> streamConsumed{0};
+    std::atomic<std::int64_t> trackStartFrame{0};
     std::atomic<std::uint64_t> durationFrames{0};
     std::atomic<std::uint64_t> seekRequest{kNoSeek};
 
@@ -68,7 +74,6 @@ struct AudioEngine::Impl
     float currentGain = 0.0f;
 
     mutable std::mutex stringMutex;
-    std::string path;
     std::string error;
 };
 
@@ -180,13 +185,9 @@ bool AudioEngine::isInitialized() const
     return m_impl && m_impl->deviceInitialized;
 }
 
-void AudioEngine::playFile(const std::string &path)
-{
-    startPlayback(path, kNoSeek);
-}
-
-void AudioEngine::startPlayback(const std::string &path,
-                                std::uint64_t startFrame)
+void AudioEngine::setQueue(const std::vector<std::string> &paths,
+                           int startIndex, double startPositionSeconds,
+                           bool autoPlay)
 {
     if (!m_impl->deviceInitialized) {
         setError("No audio device is available.");
@@ -197,26 +198,159 @@ void AudioEngine::startPlayback(const std::string &path,
     requestFlush();
 
     {
-        std::lock_guard<std::mutex> lock(m_impl->stringMutex);
-        m_impl->path = path;
-        m_impl->error.clear();
+        std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+        m_impl->queue.setItems(paths);
+    }
+
+    if (paths.empty()) {
+        m_impl->hasTrack.store(false, std::memory_order_release);
+        m_impl->opening.store(false, std::memory_order_release);
+        m_impl->loaded.store(false, std::memory_order_release);
+        m_impl->playing.store(false, std::memory_order_release);
+        m_impl->paused.store(false, std::memory_order_release);
+        m_impl->ended.store(false, std::memory_order_release);
+        m_impl->eos.store(false, std::memory_order_release);
+        m_impl->audibleIndex.store(-1, std::memory_order_release);
+        m_impl->durationFrames.store(0, std::memory_order_release);
+        m_impl->streamConsumed.store(0, std::memory_order_release);
+        m_impl->trackStartFrame.store(0, std::memory_order_release);
+        m_impl->seekRequest.store(kNoSeek, std::memory_order_release);
+        return;
+    }
+
+    const int index = std::clamp(startIndex, 0, static_cast<int>(paths.size()) - 1);
+    std::uint64_t startFrame = 0;
+    if (startPositionSeconds > 0.0) {
+        startFrame = static_cast<std::uint64_t>(
+            std::llround(startPositionSeconds * m_impl->sampleRate));
+    }
+
+    startAtIndex(index, startFrame, autoPlay);
+}
+
+void AudioEngine::clearQueue()
+{
+    setQueue({}, -1, 0.0, false);
+}
+
+void AudioEngine::playFile(const std::string &path)
+{
+    setQueue({path}, 0, 0.0, true);
+}
+
+void AudioEngine::playQueueIndex(int index)
+{
+    startAtIndex(index, 0, true);
+}
+
+void AudioEngine::next()
+{
+    if (!m_impl->hasTrack.load(std::memory_order_acquire))
+        return;
+
+    const int audible = currentIndex();
+    int target = -1;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+        target = m_impl->queue.peekAdvanceFrom(audible, true);
+    }
+    if (target >= 0)
+        startAtIndex(target, 0, true);
+}
+
+void AudioEngine::previous()
+{
+    if (!m_impl->hasTrack.load(std::memory_order_acquire))
+        return;
+
+    const int audible = currentIndex();
+    int target = -1;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+        target = m_impl->queue.peekRewindFrom(audible, true);
+    }
+    if (target < 0)
+        target = audible;
+    if (target >= 0)
+        startAtIndex(target, 0, true);
+}
+
+void AudioEngine::setShuffle(bool shuffle)
+{
+    std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+    m_impl->queue.setShuffle(shuffle);
+}
+
+bool AudioEngine::shuffle() const
+{
+    std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+    return m_impl->queue.shuffle();
+}
+
+void AudioEngine::setRepeatMode(RepeatMode mode)
+{
+    std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+    m_impl->queue.setRepeatMode(mode);
+}
+
+RepeatMode AudioEngine::repeatMode() const
+{
+    std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+    return m_impl->queue.repeatMode();
+}
+
+int AudioEngine::currentIndex() const
+{
+    return m_impl->audibleIndex.load(std::memory_order_acquire);
+}
+
+int AudioEngine::queueSize() const
+{
+    std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+    return m_impl->queue.size();
+}
+
+std::string AudioEngine::queuePathAt(int index) const
+{
+    std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+    if (index < 0 || index >= m_impl->queue.size())
+        return {};
+    return m_impl->queue.items()[static_cast<std::size_t>(index)];
+}
+
+void AudioEngine::startAtIndex(int index, std::uint64_t startFrame, bool autoPlay)
+{
+    if (!m_impl->deviceInitialized) {
+        setError("No audio device is available.");
+        return;
+    }
+
+    stopDecoderThread();
+    requestFlush();
+
+    {
+        std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+        if (index < 0 || index >= m_impl->queue.size())
+            return;
+        m_impl->queue.setCurrentIndex(index);
     }
 
     m_impl->hasTrack.store(true, std::memory_order_release);
     m_impl->opening.store(true, std::memory_order_release);
     m_impl->loaded.store(false, std::memory_order_release);
     m_impl->playing.store(false, std::memory_order_release);
-    m_impl->paused.store(false, std::memory_order_release);
+    m_impl->paused.store(!autoPlay, std::memory_order_release);
     m_impl->ended.store(false, std::memory_order_release);
     m_impl->eos.store(false, std::memory_order_release);
-    m_impl->positionAnchor.store(startFrame == kNoSeek ? 0 : startFrame,
-                                 std::memory_order_release);
-    m_impl->framesSinceAnchor.store(0, std::memory_order_release);
+    m_impl->audibleIndex.store(index, std::memory_order_release);
     m_impl->durationFrames.store(0, std::memory_order_release);
-    m_impl->seekRequest.store(startFrame, std::memory_order_release);
+    m_impl->streamConsumed.store(0, std::memory_order_release);
+    m_impl->trackStartFrame.store(-static_cast<std::int64_t>(startFrame),
+                                  std::memory_order_release);
+    m_impl->seekRequest.store(kNoSeek, std::memory_order_release);
     m_impl->stopRequested.store(false, std::memory_order_release);
 
-    m_impl->decoderThread = std::thread(&AudioEngine::decodeLoop, this, path);
+    m_impl->decoderThread = std::thread(&AudioEngine::decodeLoop, this, startFrame);
 }
 
 void AudioEngine::pause()
@@ -233,20 +367,18 @@ void AudioEngine::resume()
     if (!m_impl->hasTrack.load(std::memory_order_acquire))
         return;
 
-    if (m_impl->ended.load(std::memory_order_acquire)) {
-        const std::string path = currentPath();
-        if (!path.empty())
-            playFile(path);
+    const int index = currentIndex();
+    if (index < 0)
+        return;
+
+    if (m_impl->opening.load(std::memory_order_acquire)) {
+        m_impl->paused.store(false, std::memory_order_release);
         return;
     }
 
-    if (m_impl->opening.load(std::memory_order_acquire))
-        return;
-
-    if (!m_impl->loaded.load(std::memory_order_acquire)) {
-        const std::string path = currentPath();
-        if (!path.empty())
-            playFile(path);
+    if (m_impl->ended.load(std::memory_order_acquire)
+        || !m_impl->loaded.load(std::memory_order_acquire)) {
+        startAtIndex(index, 0, true);
         return;
     }
 
@@ -278,8 +410,8 @@ void AudioEngine::stop()
     m_impl->loaded.store(false, std::memory_order_release);
     m_impl->ended.store(false, std::memory_order_release);
     m_impl->eos.store(false, std::memory_order_release);
-    m_impl->positionAnchor.store(0, std::memory_order_release);
-    m_impl->framesSinceAnchor.store(0, std::memory_order_release);
+    m_impl->streamConsumed.store(0, std::memory_order_release);
+    m_impl->trackStartFrame.store(0, std::memory_order_release);
     m_impl->seekRequest.store(kNoSeek, std::memory_order_release);
 }
 
@@ -288,8 +420,13 @@ void AudioEngine::seekToSeconds(double seconds)
     if (m_impl->sampleRate == 0)
         return;
 
-    const std::uint64_t duration = m_impl->durationFrames.load(std::memory_order_acquire);
-    double clamped = std::max(0.0, seconds);
+    const int index = currentIndex();
+    if (!m_impl->hasTrack.load(std::memory_order_acquire) || index < 0)
+        return;
+
+    const std::uint64_t duration =
+        m_impl->durationFrames.load(std::memory_order_acquire);
+    const double clamped = std::max(0.0, seconds);
     std::uint64_t frame = static_cast<std::uint64_t>(
         std::llround(clamped * static_cast<double>(m_impl->sampleRate)));
     if (duration > 0)
@@ -300,9 +437,7 @@ void AudioEngine::seekToSeconds(double seconds)
         || m_impl->opening.load(std::memory_order_acquire);
 
     if (ended || !active) {
-        const std::string path = currentPath();
-        if (!path.empty())
-            startPlayback(path, frame);
+        startAtIndex(index, frame, true);
         return;
     }
 
@@ -348,9 +483,20 @@ double AudioEngine::positionSeconds() const
     if (hasEnded())
         return durationSeconds();
 
-    const std::uint64_t frames = m_impl->positionAnchor.load(std::memory_order_acquire)
-        + m_impl->framesSinceAnchor.load(std::memory_order_acquire);
-    return static_cast<double>(frames) / static_cast<double>(m_impl->sampleRate);
+    const std::int64_t consumed = static_cast<std::int64_t>(
+        m_impl->streamConsumed.load(std::memory_order_acquire));
+    const std::int64_t start =
+        m_impl->trackStartFrame.load(std::memory_order_acquire);
+    std::int64_t frames = consumed - start;
+    if (frames < 0)
+        frames = 0;
+
+    double seconds = static_cast<double>(frames)
+        / static_cast<double>(m_impl->sampleRate);
+    const double total = durationSeconds();
+    if (total > 0.0)
+        seconds = std::min(seconds, total);
+    return seconds;
 }
 
 double AudioEngine::durationSeconds() const
@@ -373,8 +519,7 @@ float AudioEngine::volume() const
 
 std::string AudioEngine::currentPath() const
 {
-    std::lock_guard<std::mutex> lock(m_impl->stringMutex);
-    return m_impl->path;
+    return queuePathAt(currentIndex());
 }
 
 std::string AudioEngine::takeError()
@@ -395,11 +540,13 @@ void AudioEngine::render(float *output, std::uint32_t frameCount)
     const std::size_t sampleCount = static_cast<std::size_t>(frameCount) * 2;
     std::fill_n(output, sampleCount, 0.0f);
 
-    // A flush request is used for seeks and track changes. The decoder waits
-    // for this acknowledgement before writing new samples.
+    // A flush request is used for seeks, queue jumps and track changes. The
+    // decoder waits for this acknowledgement before writing new samples.
     const std::uint64_t requested = m_impl->flushRequest.load(std::memory_order_acquire);
     if (requested != m_impl->flushAck.load(std::memory_order_relaxed)) {
         m_impl->ring.discardAllByConsumer();
+        m_impl->boundaries.clearByConsumer();
+        m_impl->streamConsumed.store(0, std::memory_order_release);
         m_impl->currentGain = 0.0f;
         m_impl->flushAck.store(requested, std::memory_order_release);
         return;
@@ -434,14 +581,34 @@ void AudioEngine::render(float *output, std::uint32_t frameCount)
         output[i] *= gain;
     }
     m_impl->currentGain = gain;
-    m_impl->framesSinceAnchor.fetch_add(framesRead, std::memory_order_relaxed);
+
+    const std::uint64_t consumed = m_impl->streamConsumed.fetch_add(
+        framesRead, std::memory_order_acq_rel) + framesRead;
+
+    TrackBoundary boundary;
+    while (m_impl->boundaries.peek(boundary)
+           && boundary.framePosition <= consumed) {
+        m_impl->boundaries.pop();
+        m_impl->audibleIndex.store(boundary.queueIndex, std::memory_order_release);
+        m_impl->durationFrames.store(boundary.durationFrames,
+                                     std::memory_order_release);
+        m_impl->trackStartFrame.store(
+            static_cast<std::int64_t>(boundary.framePosition),
+            std::memory_order_release);
+    }
 }
 
-void AudioEngine::decodeLoop(std::string path)
+void AudioEngine::decodeLoop(std::uint64_t initialSeekFrame)
 {
-    MiniaudioDecoder decoder;
+    std::string path;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+        path = m_impl->queue.currentPath();
+    }
+
+    auto decoder = std::make_unique<MiniaudioDecoder>();
     std::string error;
-    if (!decoder.open(path, m_impl->sampleRate, &error)) {
+    if (!decoder->open(path, m_impl->sampleRate, &error)) {
         setError(error.empty() ? "Could not open audio file." : error);
         m_impl->opening.store(false, std::memory_order_release);
         m_impl->loaded.store(false, std::memory_order_release);
@@ -449,7 +616,20 @@ void AudioEngine::decodeLoop(std::string path)
         return;
     }
 
-    const DecoderInfo info = decoder.info();
+    DecoderInfo info = decoder->info();
+    if (info.totalFrames > 0 && initialSeekFrame > info.totalFrames)
+        initialSeekFrame = info.totalFrames;
+    if (initialSeekFrame > 0) {
+        if (!decoder->seek(initialSeekFrame)) {
+            setError("The audio file does not support seeking.");
+            initialSeekFrame = 0;
+        } else {
+            m_impl->trackStartFrame.store(
+                -static_cast<std::int64_t>(initialSeekFrame),
+                std::memory_order_release);
+        }
+    }
+
     m_impl->durationFrames.store(info.totalFrames, std::memory_order_release);
     m_impl->loaded.store(true, std::memory_order_release);
     m_impl->opening.store(false, std::memory_order_release);
@@ -460,6 +640,7 @@ void AudioEngine::decodeLoop(std::string path)
     }
 
     std::vector<float> buffer(kBufferFrames * 2);
+    std::uint64_t produced = 0;
 
     while (!m_impl->stopRequested.load(std::memory_order_acquire)) {
         const std::uint64_t requestedSeek =
@@ -467,9 +648,17 @@ void AudioEngine::decodeLoop(std::string path)
         if (requestedSeek != kNoSeek) {
             if (!requestFlush())
                 break;
-            if (decoder.seek(requestedSeek)) {
-                m_impl->positionAnchor.store(requestedSeek, std::memory_order_release);
-                m_impl->framesSinceAnchor.store(0, std::memory_order_release);
+
+            std::uint64_t target = requestedSeek;
+            const DecoderInfo currentInfo = decoder->info();
+            if (currentInfo.totalFrames > 0)
+                target = std::min(target, currentInfo.totalFrames);
+
+            if (decoder->seek(target)) {
+                produced = 0;
+                m_impl->trackStartFrame.store(
+                    -static_cast<std::int64_t>(target),
+                    std::memory_order_release);
                 m_impl->ended.store(false, std::memory_order_release);
                 m_impl->eos.store(false, std::memory_order_release);
             } else {
@@ -489,10 +678,47 @@ void AudioEngine::decodeLoop(std::string path)
         }
 
         const std::size_t want = std::min(freeFrames, kBufferFrames);
-        const std::size_t framesRead = decoder.read(buffer.data(), want);
+        const std::size_t framesRead = decoder->read(buffer.data(), want);
         if (framesRead == 0) {
-            m_impl->eos.store(true, std::memory_order_release);
-            break;
+            int nextIndex = -1;
+            std::string nextPath;
+            {
+                std::lock_guard<std::mutex> lock(m_impl->queueMutex);
+                nextIndex = m_impl->queue.advance(false);
+                if (nextIndex >= 0)
+                    nextPath = m_impl->queue.currentPath();
+            }
+
+            if (nextIndex < 0) {
+                m_impl->eos.store(true, std::memory_order_release);
+                break;
+            }
+
+            auto nextDecoder = std::make_unique<MiniaudioDecoder>();
+            std::string nextError;
+            if (!nextDecoder->open(nextPath, m_impl->sampleRate, &nextError)) {
+                setError(nextError.empty() ? "Could not open the next track."
+                                            : nextError);
+                m_impl->eos.store(true, std::memory_order_release);
+                break;
+            }
+
+            const DecoderInfo nextInfo = nextDecoder->info();
+            TrackBoundary boundary;
+            boundary.framePosition = produced;
+            boundary.queueIndex = nextIndex;
+            boundary.durationFrames = nextInfo.totalFrames;
+
+            while (!m_impl->boundaries.push(boundary)) {
+                if (m_impl->stopRequested.load(std::memory_order_acquire))
+                    break;
+                std::this_thread::sleep_for(kDecoderIdleSleep);
+            }
+            if (m_impl->stopRequested.load(std::memory_order_acquire))
+                break;
+
+            decoder = std::move(nextDecoder);
+            continue;
         }
 
         std::size_t written = 0;
@@ -501,6 +727,7 @@ void AudioEngine::decodeLoop(std::string path)
             const std::size_t count = m_impl->ring.write(
                 buffer.data() + written * 2, framesRead - written);
             written += count;
+            produced += count;
             if (count == 0)
                 std::this_thread::sleep_for(kDecoderIdleSleep);
         }

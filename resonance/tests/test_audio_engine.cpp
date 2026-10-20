@@ -14,7 +14,8 @@ using resonance::AudioEngine;
 
 namespace {
 
-void writeTestWav(const QString &path, double seconds)
+void writeTestWav(const QString &path, double seconds,
+                  double frequency = 440.0)
 {
     constexpr std::uint32_t sampleRate = 48000;
     constexpr std::uint16_t channels = 2;
@@ -46,7 +47,7 @@ void writeTestWav(const QString &path, double seconds)
     for (std::uint32_t frame = 0; frame < frameCount; ++frame) {
         const double t = static_cast<double>(frame) / sampleRate;
         const auto sample = static_cast<qint16>(
-            std::sin(2.0 * std::numbers::pi * 440.0 * t) * 12000.0);
+            std::sin(2.0 * std::numbers::pi * frequency * t) * 12000.0);
         out << sample << sample;
     }
 }
@@ -59,6 +60,9 @@ class TestAudioEngine : public QObject
 
 private slots:
     void playbackLifecycle();
+    void gaplessQueueAdvance();
+    void pausedRestorePosition();
+    void queueNavigation();
 };
 
 void TestAudioEngine::playbackLifecycle()
@@ -105,6 +109,95 @@ void TestAudioEngine::playbackLifecycle()
 
     engine.stop();
     QVERIFY(engine.positionSeconds() < 0.01);
+    QVERIFY(engine.takeError().empty());
+}
+
+void TestAudioEngine::gaplessQueueAdvance()
+{
+    qputenv("RESONANCE_NULL_AUDIO", "1");
+
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString first = temp.filePath(QStringLiteral("a.wav"));
+    const QString second = temp.filePath(QStringLiteral("b.wav"));
+    writeTestWav(first, 0.8, 440.0);
+    writeTestWav(second, 0.8, 660.0);
+
+    AudioEngine engine;
+    std::string error;
+    if (!engine.initialize(&error))
+        QSKIP(qPrintable(QString::fromStdString(error)));
+
+    engine.setQueue({first.toStdString(), second.toStdString()}, 0, 0.0, true);
+    QTRY_VERIFY_WITH_TIMEOUT(engine.isPlaying(), 2000);
+    QCOMPARE(engine.currentIndex(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(engine.currentIndex() == 1, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(engine.hasEnded(), 3000);
+    QCOMPARE(engine.currentIndex(), 1);
+    QVERIFY(engine.durationSeconds() > 0.7);
+    QVERIFY(engine.takeError().empty());
+}
+
+void TestAudioEngine::pausedRestorePosition()
+{
+    qputenv("RESONANCE_NULL_AUDIO", "1");
+
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString first = temp.filePath(QStringLiteral("a.wav"));
+    const QString second = temp.filePath(QStringLiteral("b.wav"));
+    writeTestWav(first, 1.0, 440.0);
+    writeTestWav(second, 1.0, 660.0);
+
+    AudioEngine engine;
+    std::string error;
+    if (!engine.initialize(&error))
+        QSKIP(qPrintable(QString::fromStdString(error)));
+
+    engine.setQueue({first.toStdString(), second.toStdString()}, 1, 0.20, false);
+    QTRY_VERIFY_WITH_TIMEOUT(engine.isLoaded(), 2000);
+    QVERIFY(engine.isPaused());
+    QVERIFY(!engine.isPlaying());
+    QCOMPARE(engine.currentIndex(), 1);
+    QVERIFY(std::abs(engine.positionSeconds() - 0.20) < 0.05);
+    QVERIFY(engine.durationSeconds() > 0.9);
+
+    engine.resume();
+    QTRY_VERIFY_WITH_TIMEOUT(engine.isPlaying(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(engine.positionSeconds() > 0.30, 2000);
+    engine.stop();
+}
+
+void TestAudioEngine::queueNavigation()
+{
+    qputenv("RESONANCE_NULL_AUDIO", "1");
+
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QStringList files;
+    for (int i = 0; i < 3; ++i) {
+        const QString path = temp.filePath(QStringLiteral("track%1.wav").arg(i));
+        writeTestWav(path, 0.5, 300.0 + i * 100.0);
+        files.append(path);
+    }
+
+    AudioEngine engine;
+    std::string error;
+    if (!engine.initialize(&error))
+        QSKIP(qPrintable(QString::fromStdString(error)));
+
+    engine.setQueue({files.at(0).toStdString(), files.at(1).toStdString(),
+                     files.at(2).toStdString()},
+                    0, 0.0, true);
+    QTRY_VERIFY_WITH_TIMEOUT(engine.isPlaying(), 2000);
+    QCOMPARE(engine.currentIndex(), 0);
+
+    engine.next();
+    QTRY_VERIFY_WITH_TIMEOUT(engine.currentIndex() == 1, 2000);
+    engine.previous();
+    QTRY_VERIFY_WITH_TIMEOUT(engine.currentIndex() == 0, 2000);
+    engine.stop();
+
     QVERIFY(engine.takeError().empty());
 }
 

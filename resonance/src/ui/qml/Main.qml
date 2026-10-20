@@ -68,10 +68,6 @@ ApplicationWindow {
             Sidebar {
                 Layout.fillHeight: true
                 onOpenFolderRequested: folderDialog.open()
-                onPlayFolderRequested: {
-                    if (Library.hasTracks)
-                        Library.playIndex(0)
-                }
             }
 
             Item {
@@ -159,6 +155,36 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Alt+Left"
+        onActivated: Player.previous()
+    }
+
+    Shortcut {
+        sequence: "Alt+Right"
+        onActivated: Player.next()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Alt+Left"
+        onActivated: Library.previousFolder()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Alt+Right"
+        onActivated: Library.nextFolder()
+    }
+
+    Shortcut {
+        sequence: "S"
+        onActivated: Player.toggleShuffle()
+    }
+
+    Shortcut {
+        sequence: "R"
+        onActivated: Player.cycleRepeat()
+    }
+
+    Shortcut {
         sequence: "Ctrl+T"
         onActivated: root.toggleTools(!root.toolsOpen)
     }
@@ -243,7 +269,7 @@ ApplicationWindow {
         root.toolsOpen = AppSettings.toolsOpen
         if (Library.startupFolder.length > 0)
             Library.openFolderPath(Library.startupFolder, Library.startupAutoPlay)
-        else if (AppSettings.lastFolder.length > 0)
-            Library.openFolderPath(AppSettings.lastFolder, false)
+        else
+            Library.restoreLastSession()
     }
 }
