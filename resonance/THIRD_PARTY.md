@@ -4,7 +4,7 @@ Resonance itself is licensed under GPL-3.0-or-later (see `LICENSE`). This file
 lists every third-party component used by the current milestone, plus
 dependencies planned for later milestones.
 
-## Used in M2
+## Used in M3
 
 | Component | Version | License | How it is used |
 |---|---|---|---|
@@ -12,6 +12,9 @@ dependencies planned for later milestones.
 | miniaudio | 0.11.22 | MIT-0 **or** public domain | Audio device I/O, WAV/FLAC/MP3 decoding |
 | stb_vorbis | 1.22 | Public domain **or** MIT | Ogg Vorbis decoding (compiled with miniaudio) |
 | TagLib | 2.0+ (2.3 tested) | LGPL-2.1 **or** MPL-2.0 | Tags, durations, embedded cover art |
+
+M3 adds no new third-party dependencies. Playlist JSON, M3U/M3U8 and PLS handling
+are implemented with Qt Core (`QJsonDocument`, `QSaveFile`, `QFile`, `QUrl`).
 
 ### Qt 6
 
