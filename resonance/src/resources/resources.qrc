@@ -26,5 +26,13 @@
         <file alias="shuffle.svg">icons/shuffle.svg</file>
         <file alias="repeat.svg">icons/repeat.svg</file>
         <file alias="repeat-one.svg">icons/repeat-one.svg</file>
+        <file alias="plus.svg">icons/plus.svg</file>
+        <file alias="pencil.svg">icons/pencil.svg</file>
+        <file alias="trash.svg">icons/trash.svg</file>
+        <file alias="download.svg">icons/download.svg</file>
+        <file alias="upload.svg">icons/upload.svg</file>
+        <file alias="folder-plus.svg">icons/folder-plus.svg</file>
+        <file alias="play-next.svg">icons/play-next.svg</file>
+        <file alias="grip.svg">icons/grip.svg</file>
     </qresource>
 </RCC>

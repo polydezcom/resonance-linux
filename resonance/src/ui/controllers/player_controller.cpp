@@ -173,6 +173,43 @@ void PlayerController::playQueueIndex(int index)
     poll();
 }
 
+void PlayerController::playNext(const QString &path)
+{
+    if (path.isEmpty())
+        return;
+
+    if (m_queuePaths.isEmpty() || m_queueIndex < 0) {
+        setQueue({path}, 0, 0, true);
+        return;
+    }
+
+    const bool wasPlaying = m_playing;
+    const qint64 position = m_positionMs;
+    const int index = std::clamp(m_queueIndex, 0,
+                                 static_cast<int>(m_queuePaths.size()) - 1);
+
+    QStringList newQueue = m_queuePaths;
+    newQueue.insert(index + 1, path);
+
+    std::vector<std::string> enginePaths;
+    enginePaths.reserve(static_cast<std::size_t>(newQueue.size()));
+    for (const QString &item : newQueue)
+        enginePaths.push_back(item.toStdString());
+
+    m_queuePaths = newQueue;
+    m_queueIndex = index;
+    m_engine->setQueue(enginePaths, index,
+                       static_cast<double>(std::max<qint64>(0, position)) / 1000.0,
+                       wasPlaying);
+    m_finished = false;
+
+    emit queueIndexChanged();
+    emit finishedChanged();
+    updateTrackInfo();
+    savePlaybackState();
+    poll();
+}
+
 void PlayerController::next()
 {
     m_engine->next();
@@ -356,11 +393,13 @@ void PlayerController::poll()
 
     qint64 duration = static_cast<qint64>(
         std::llround(m_engine->durationSeconds() * 1000.0));
-    if (duration <= 0 && m_trackModel && m_queueIndex >= 0
-        && m_queueIndex < m_trackModel->count()) {
-        duration = m_trackModel->data(
-            m_trackModel->index(m_queueIndex),
-            TrackListModel::DurationRole).toLongLong();
+    if (duration <= 0 && m_trackModel) {
+        const int row = m_trackModel->indexOfPath(m_path);
+        if (row >= 0) {
+            duration = m_trackModel->data(
+                m_trackModel->index(row),
+                TrackListModel::DurationRole).toLongLong();
+        }
     }
     if (duration != m_durationMs) {
         m_durationMs = duration;
@@ -386,18 +425,20 @@ void PlayerController::updateTrackInfo()
     QString title;
     QString subtitle;
 
-    if (m_trackModel && m_queueIndex >= 0
-        && m_queueIndex < m_trackModel->count()) {
-        const QModelIndex index = m_trackModel->index(m_queueIndex);
-        title = m_trackModel->data(index, TrackListModel::TitleRole).toString();
-        const QString artist =
-            m_trackModel->data(index, TrackListModel::ArtistRole).toString();
-        const QString album =
-            m_trackModel->data(index, TrackListModel::AlbumRole).toString();
-        if (!artist.isEmpty()) {
-            subtitle = artist;
-            if (!album.isEmpty())
-                subtitle += QStringLiteral(" · ") + album;
+    if (m_trackModel) {
+        const int row = m_trackModel->indexOfPath(newPath);
+        if (row >= 0) {
+            const QModelIndex index = m_trackModel->index(row);
+            title = m_trackModel->data(index, TrackListModel::TitleRole).toString();
+            const QString artist =
+                m_trackModel->data(index, TrackListModel::ArtistRole).toString();
+            const QString album =
+                m_trackModel->data(index, TrackListModel::AlbumRole).toString();
+            if (!artist.isEmpty()) {
+                subtitle = artist;
+                if (!album.isEmpty())
+                    subtitle += QStringLiteral(" · ") + album;
+            }
         }
     }
 

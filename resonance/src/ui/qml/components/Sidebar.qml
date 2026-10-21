@@ -1,5 +1,7 @@
 import Resonance
 import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Rectangle {
@@ -78,39 +80,187 @@ Rectangle {
             Layout.minimumHeight: 110
         }
 
-        Rectangle {
+        RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 42
-            radius: Theme.radiusSmall
-            color: "transparent"
-            border.width: 1
-            border.color: Theme.border
+            spacing: 2
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 9
-
-                Icon {
-                    name: "list"
-                    size: 16
-                    color: Theme.textFaint
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Playlists")
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 13
-                }
-                Text {
-                    text: "M3"
-                    color: Theme.textFaint
-                    font.family: Theme.monoFamily
-                    font.pixelSize: 10
-                }
+            SectionLabel {
+                Layout.fillWidth: true
+                text: "PLAYLISTS"
             }
+
+            IconButton {
+                iconName: "plus"
+                iconSize: 13
+                buttonSize: 26
+                accessibleLabel: qsTr("New playlist")
+                onClicked: playlistNamePopup.openCreate()
+            }
+
+            IconButton {
+                iconName: "upload"
+                iconSize: 13
+                buttonSize: 26
+                accessibleLabel: qsTr("Import M3U or PLS playlist")
+                onClicked: importDialog.open()
+            }
+        }
+
+        ListView {
+            id: playlistList
+            Layout.fillWidth: true
+            Layout.preferredHeight: 118
+            Layout.minimumHeight: 60
+            clip: true
+            spacing: 1
+            model: Playlists.model
+            boundsBehavior: Flickable.StopAtBounds
+
+            ScrollBar.vertical: ScrollBar {
+                id: playlistScrollBar
+                policy: ScrollBar.AsNeeded
+                contentItem: Rectangle {
+                    implicitWidth: 5
+                    radius: 2.5
+                    color: playlistScrollBar.pressed ? Theme.accent : Theme.border
+                    opacity: playlistScrollBar.active ? 1.0 : 0.35
+                }
+                background: Item {}
+            }
+
+            delegate: Rectangle {
+                id: playlistRow
+
+                required property int index
+                required property string playlistId
+                required property string name
+                required property int trackCount
+                required property bool current
+
+                width: playlistList.width
+                height: 29
+                radius: 6
+                color: current ? Theme.selected
+                               : playlistMouse.containsMouse ? Theme.hover : "transparent"
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.animFast }
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 7
+                    anchors.rightMargin: 7
+                    spacing: 7
+
+                    Icon {
+                        name: "list"
+                        size: 13
+                        color: playlistRow.current ? Theme.accent : Theme.textFaint
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: playlistRow.name
+                        color: playlistRow.current ? Theme.accent : Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: playlistRow.current ? Font.DemiBold : Font.Normal
+                        elide: Text.ElideMiddle
+                    }
+
+                    Text {
+                        text: playlistRow.trackCount
+                        color: Theme.textFaint
+                        font.family: Theme.monoFamily
+                        font.pixelSize: 9
+                    }
+                }
+
+                MouseArea {
+                    id: playlistMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Library.playPlaylist(playlistRow.playlistId)
+                    Accessible.name: qsTr("Play playlist %1").arg(playlistRow.name)
+                }
+
+                Accessible.role: Accessible.ListItem
+                Accessible.name: qsTr("Playlist %1, %2 tracks")
+                                 .arg(playlistRow.name)
+                                 .arg(playlistRow.trackCount)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            visible: Playlists.hasCurrent
+
+            IconButton {
+                iconName: "folder-plus"
+                iconSize: 14
+                buttonSize: 28
+                accessibleLabel: qsTr("Add a folder to this playlist")
+                onClicked: addFolderDialog.open()
+            }
+
+            IconButton {
+                iconName: "pencil"
+                iconSize: 14
+                buttonSize: 28
+                accessibleLabel: qsTr("Rename this playlist")
+                onClicked: playlistNamePopup.openRename(Playlists.currentId,
+                                                        Playlists.currentName)
+            }
+
+            IconButton {
+                iconName: "download"
+                iconSize: 14
+                buttonSize: 28
+                accessibleLabel: qsTr("Export this playlist")
+                onClicked: exportDialog.open()
+            }
+
+            Item { Layout.fillWidth: true }
+
+            IconButton {
+                iconName: "trash"
+                iconSize: 14
+                buttonSize: 28
+                accessibleLabel: qsTr("Delete this playlist")
+                onClicked: deletePopup.open()
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: Playlists.error.length > 0
+            text: Playlists.error
+            color: Theme.danger
+            font.family: Theme.fontFamily
+            font.pixelSize: 10
+            wrapMode: Text.WordWrap
+            maximumLineCount: 3
+            elide: Text.ElideRight
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Playlists.clearError()
+                Accessible.name: qsTr("Dismiss playlist error")
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: Playlists.model.count === 0
+            text: qsTr("No playlists yet")
+            color: Theme.textFaint
+            font.family: Theme.fontFamily
+            font.pixelSize: 11
+            horizontalAlignment: Text.AlignHCenter
         }
 
         SectionLabel { text: "ACCENT" }
@@ -162,11 +312,98 @@ Rectangle {
 
         Text {
             Layout.fillWidth: true
-            text: "v0.2 · M2"
+            text: "v0.3 · M3"
             color: Theme.textFaint
             font.family: Theme.monoFamily
             font.pixelSize: 10
             horizontalAlignment: Text.AlignHCenter
         }
     }
+
+    PlaylistNamePopup { id: playlistNamePopup }
+
+    FolderDialog {
+        id: addFolderDialog
+        title: qsTr("Add folder to playlist")
+        onAccepted: Playlists.addUrls(Playlists.currentId, [selectedFolder])
+    }
+
+    FileDialog {
+        id: importDialog
+        title: qsTr("Import playlist")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("Playlists (*.m3u *.m3u8 *.pls)")]
+        onAccepted: Playlists.importPlaylist(selectedFile)
+    }
+
+    FileDialog {
+        id: exportDialog
+        title: qsTr("Export playlist")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "m3u8"
+        nameFilters: [
+            qsTr("M3U8 playlist (*.m3u8)"),
+            qsTr("M3U playlist (*.m3u)"),
+            qsTr("PLS playlist (*.pls)"),
+        ]
+        onAccepted: Playlists.exportPlaylist(Playlists.currentId, selectedFile)
+    }
+
+    Popup {
+        id: deletePopup
+
+        parent: Overlay.overlay
+        x: (parent.width - width) / 2
+        y: (parent.height - height) / 2
+        width: 320
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 18
+
+        background: Rectangle {
+            color: Theme.surfaceElevated
+            radius: Theme.radiusLarge
+            border.width: 1
+            border.color: Theme.borderStrong
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            SectionLabel { text: qsTr("DELETE PLAYLIST") }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Delete “%1”? The audio files themselves are not touched.")
+                      .arg(Playlists.currentName)
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                ResonanceButton {
+                    text: qsTr("Cancel")
+                    ghost: true
+                    compact: true
+                    onClicked: deletePopup.close()
+                }
+                ResonanceButton {
+                    text: qsTr("Delete")
+                    primary: true
+                    compact: true
+                    onClicked: {
+                        Playlists.deletePlaylist(Playlists.currentId)
+                        deletePopup.close()
+                    }
+                }
+            }
+        }
+    }
+
 }

@@ -28,3 +28,15 @@ resonance_add_test(test_folder_tree
 
 set(RESONANCE_TEST_LIBRARIES resonance_library Qt6::Gui)
 resonance_add_test(test_metadata test_metadata.cpp)
+
+set(RESONANCE_TEST_LIBRARIES resonance_library)
+resonance_add_test(test_playlist_manager test_playlist_manager.cpp)
+resonance_add_test(test_playlist_io test_playlist_io.cpp)
+
+set(RESONANCE_TEST_LIBRARIES resonance_core resonance_library Qt6::Gui Qt6::Qml Qt6::Concurrent)
+resonance_add_test(test_player_controller
+    test_player_controller.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/controllers/player_controller.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/controllers/app_settings.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/controllers/track_list_model.cpp
+)

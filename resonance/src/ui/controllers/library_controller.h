@@ -17,6 +17,7 @@ namespace resonance {
 
 class AppSettings;
 class PlayerController;
+class PlaylistController;
 
 class LibraryController : public QObject
 {
@@ -32,9 +33,14 @@ class LibraryController : public QObject
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString startupFolder READ startupFolder CONSTANT)
     Q_PROPERTY(bool startupAutoPlay READ startupAutoPlay CONSTANT)
+    Q_PROPERTY(bool playlistMode READ playlistMode NOTIFY viewChanged)
+    Q_PROPERTY(QString activePlaylistId READ activePlaylistId NOTIFY viewChanged)
+    Q_PROPERTY(QString viewTitle READ viewTitle NOTIFY viewChanged)
+    Q_PROPERTY(QString viewSubtitle READ viewSubtitle NOTIFY viewChanged)
 
 public:
     LibraryController(PlayerController *player, AppSettings *settings,
+                      PlaylistController *playlists,
                       QObject *parent = nullptr);
 
     TrackListModel *tracks() { return &m_tracks; }
@@ -48,6 +54,10 @@ public:
     QString error() const { return m_error; }
     QString startupFolder() const { return m_startupFolder; }
     bool startupAutoPlay() const { return m_startupAutoPlay; }
+    bool playlistMode() const { return m_playlistMode; }
+    QString activePlaylistId() const { return m_activePlaylistId; }
+    QString viewTitle() const;
+    QString viewSubtitle() const;
 
     void setStartupFolder(const QString &path, bool autoPlay);
 
@@ -55,7 +65,10 @@ public:
     Q_INVOKABLE void openFolderPath(const QString &path, bool autoPlay = true);
     Q_INVOKABLE void openUrls(const QList<QUrl> &urls);
     Q_INVOKABLE void playFolder(const QString &folder);
+    Q_INVOKABLE void playPlaylist(const QString &id);
     Q_INVOKABLE void playIndex(int index);
+    Q_INVOKABLE void playNext(int index);
+    Q_INVOKABLE void addCurrentToPlaylist(const QString &id);
     Q_INVOKABLE void playFromIndex(int index);
     Q_INVOKABLE void nextFolder();
     Q_INVOKABLE void previousFolder();
@@ -65,6 +78,7 @@ public:
 
 signals:
     void folderChanged();
+    void viewChanged();
     void scanningChanged();
     void tracksChanged();
     void errorChanged();
@@ -77,6 +91,10 @@ private:
     void applyCachedMetadata();
     void startMetadataLoad(const QStringList &files);
     QStringList filesUnder(const QString &folder) const;
+    void showPlaylist(const QString &id, const QStringList &tracks,
+                      int startIndex, qint64 positionMs, bool autoPlay);
+    void reloadActivePlaylist();
+    void leavePlaylistMode();
 
     FolderScanner m_scanner;
     MetadataLoader m_metadataLoader;
@@ -84,6 +102,7 @@ private:
     FolderTreeModel m_folders;
     PlayerController *m_player = nullptr;
     AppSettings *m_settings = nullptr;
+    PlaylistController *m_playlists = nullptr;
 
     QStringList m_allFiles;
     QStringList m_currentFiles;
@@ -95,6 +114,8 @@ private:
     QString m_startupFolder;
     bool m_startupAutoPlay = false;
 
+    bool m_playlistMode = false;
+    QString m_activePlaylistId;
     bool m_openAutoPlay = true;
     bool m_restoreRequested = false;
     bool m_refreshRequested = false;

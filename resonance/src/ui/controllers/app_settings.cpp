@@ -41,6 +41,11 @@ AppSettings::AppSettings(QObject *parent)
     m_shuffle = settings.value(QStringLiteral("player/shuffle"), false).toBool();
     m_repeatMode = std::clamp(
         settings.value(QStringLiteral("player/repeatMode"), 0).toInt(), 0, 2);
+    m_lastMode =
+        settings.value(QStringLiteral("library/lastMode"),
+                       QStringLiteral("folder")).toString();
+    m_lastPlaylistId =
+        settings.value(QStringLiteral("library/lastPlaylistId")).toString();
     m_toolsOpen = settings.value(QStringLiteral("ui/toolsOpen"), false).toBool();
 }
 
@@ -150,6 +155,28 @@ void AppSettings::setRepeatMode(int mode)
     QSettings settings;
     settings.setValue(QStringLiteral("player/repeatMode"), m_repeatMode);
     emit repeatModeChanged();
+}
+
+void AppSettings::setLastMode(const QString &mode)
+{
+    if (m_lastMode == mode)
+        return;
+
+    m_lastMode = mode;
+    QSettings settings;
+    settings.setValue(QStringLiteral("library/lastMode"), m_lastMode);
+    emit lastModeChanged();
+}
+
+void AppSettings::setLastPlaylistId(const QString &id)
+{
+    if (m_lastPlaylistId == id)
+        return;
+
+    m_lastPlaylistId = id;
+    QSettings settings;
+    settings.setValue(QStringLiteral("library/lastPlaylistId"), m_lastPlaylistId);
+    emit lastPlaylistIdChanged();
 }
 
 void AppSettings::setToolsOpen(bool open)

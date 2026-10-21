@@ -8,6 +8,8 @@ Rectangle {
 
     signal openFolderRequested()
 
+    property int dragSourceIndex: -1
+
     color: Theme.surface
     radius: Theme.radiusLarge
     border.width: 1
@@ -28,7 +30,8 @@ Rectangle {
                 SectionLabel { text: "TRACKS" }
                 Text {
                     Layout.fillWidth: true
-                    text: Library.hasTracks ? Library.folderName : qsTr("Your music")
+                    text: Library.playlistMode || Library.folder.length > 0
+                          ? Library.viewTitle : qsTr("Your music")
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 21
@@ -50,7 +53,7 @@ Rectangle {
                 }
                 Text {
                     Layout.alignment: Qt.AlignRight
-                    text: qsTr("Natural order")
+                    text: Library.playlistMode ? qsTr("Playlist order") : qsTr("Natural order")
                     color: Theme.textFaint
                     font.family: Theme.fontFamily
                     font.pixelSize: 10
@@ -188,6 +191,35 @@ Rectangle {
                     anchors.rightMargin: 14
                     spacing: 12
 
+                    Item {
+                        Layout.preferredWidth: Library.playlistMode ? 16 : 0
+                        Layout.preferredHeight: 24
+                        visible: Library.playlistMode
+
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "grip"
+                            size: 14
+                            color: Theme.textFaint
+                            opacity: rowMouse.containsMouse || row.isCurrent ? 1.0 : 0.35
+                        }
+
+                        DragHandler {
+                            id: rowDragHandler
+                            target: null
+                            onActiveChanged: {
+                                if (active)
+                                    pane.dragSourceIndex = row.index
+                            }
+                        }
+
+                        Drag.active: rowDragHandler.active
+                        Drag.source: row
+                        Drag.hotSpot: Qt.point(width / 2, height / 2)
+                        Drag.mimeData: ({ "text/plain": String(row.index) })
+                        Drag.onDragFinished: pane.dragSourceIndex = -1
+                    }
+
                     Text {
                         Layout.preferredWidth: 32
                         text: {
@@ -254,6 +286,27 @@ Rectangle {
                         font.family: Theme.monoFamily
                         font.pixelSize: 11
                     }
+
+                    IconButton {
+                        iconName: "play-next"
+                        iconSize: 13
+                        buttonSize: 26
+                        opacity: rowMouse.containsMouse || row.isCurrent ? 1.0 : 0.0
+                        enabled: opacity > 0.0
+                        accessibleLabel: qsTr("Play next")
+                        onClicked: Library.playNext(row.index)
+                    }
+
+                    IconButton {
+                        visible: Library.playlistMode
+                        iconName: "x"
+                        iconSize: 12
+                        buttonSize: 26
+                        opacity: rowMouse.containsMouse ? 1.0 : 0.0
+                        enabled: opacity > 0.0
+                        accessibleLabel: qsTr("Remove from playlist")
+                        onClicked: Playlists.removeTrack(Playlists.currentId, row.index)
+                    }
                 }
 
                 MouseArea {
@@ -269,6 +322,36 @@ Rectangle {
                     Accessible.name: row.title
                     Accessible.role: Accessible.ListItem
                     Accessible.onPressAction: Library.playIndex(row.index)
+                }
+
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/plain"]
+                    enabled: Library.playlistMode
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: 2
+                        radius: 1
+                        color: Theme.accent
+                        visible: parent.containsDrag
+                                  && pane.dragSourceIndex >= 0
+                                  && pane.dragSourceIndex !== row.index
+                    }
+
+                    onDropped: function(drop) {
+                        const from = pane.dragSourceIndex
+                        const to = row.index
+                        pane.dragSourceIndex = -1
+                        if (from >= 0 && from !== to) {
+                            Qt.callLater(function() {
+                                Playlists.moveTrack(Playlists.currentId, from, to)
+                            })
+                        }
+                        drop.acceptProposedAction()
+                    }
                 }
 
                 Accessible.role: Accessible.ListItem
@@ -340,7 +423,7 @@ Rectangle {
 
                 Icon {
                     anchors.centerIn: parent
-                    name: "folder-open"
+                    name: Library.playlistMode ? "list" : "folder-open"
                     size: 26
                     color: Theme.accent
                 }
@@ -348,7 +431,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Nothing loaded yet")
+                text: Library.playlistMode ? qsTr("Playlist is empty") : qsTr("Nothing loaded yet")
                 color: Theme.text
                 font.family: Theme.fontFamily
                 font.pixelSize: 17
@@ -358,7 +441,9 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Open a folder or drop music anywhere in this window.")
+                text: Library.playlistMode
+                          ? qsTr("Drop files here or add a folder from the playlist actions.")
+                          : qsTr("Open a folder or drop music anywhere in this window.")
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
@@ -369,6 +454,7 @@ Rectangle {
             ResonanceButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 4
+                visible: !Library.playlistMode
                 text: qsTr("Choose folder")
                 iconName: "folder-open"
                 primary: true

@@ -17,6 +17,8 @@ class AppSettings : public QObject
     Q_PROPERTY(qint64 lastPositionMs READ lastPositionMs WRITE setLastPositionMs NOTIFY lastPositionChanged)
     Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle NOTIFY shuffleChanged)
     Q_PROPERTY(int repeatMode READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
+    Q_PROPERTY(QString lastMode READ lastMode WRITE setLastMode NOTIFY lastModeChanged)
+    Q_PROPERTY(QString lastPlaylistId READ lastPlaylistId WRITE setLastPlaylistId NOTIFY lastPlaylistIdChanged)
     Q_PROPERTY(bool toolsOpen READ toolsOpen WRITE setToolsOpen NOTIFY toolsOpenChanged)
 
 public:
@@ -49,6 +51,12 @@ public:
     int repeatMode() const { return m_repeatMode; }
     void setRepeatMode(int mode);
 
+    QString lastMode() const { return m_lastMode; }
+    void setLastMode(const QString &mode);
+
+    QString lastPlaylistId() const { return m_lastPlaylistId; }
+    void setLastPlaylistId(const QString &id);
+
     bool toolsOpen() const { return m_toolsOpen; }
     void setToolsOpen(bool open);
 
@@ -62,6 +70,8 @@ signals:
     void lastPositionChanged();
     void shuffleChanged();
     void repeatModeChanged();
+    void lastModeChanged();
+    void lastPlaylistIdChanged();
     void toolsOpenChanged();
 
 private:
@@ -74,6 +84,8 @@ private:
     qint64 m_lastPositionMs = 0;
     bool m_shuffle = false;
     int m_repeatMode = 0;
+    QString m_lastMode = QStringLiteral("folder");
+    QString m_lastPlaylistId;
     bool m_toolsOpen = false;
 };
 

@@ -3,6 +3,7 @@
 #include "library/audio_formats.h"
 #include "library/natural_sort.h"
 #include "ui/controllers/app_settings.h"
+#include "ui/controllers/playlist_controller.h"
 #include "ui/controllers/player_controller.h"
 
 #include <QDir>
@@ -13,10 +14,13 @@
 namespace resonance {
 
 LibraryController::LibraryController(PlayerController *player,
-                                     AppSettings *settings, QObject *parent)
+                                     AppSettings *settings,
+                                     PlaylistController *playlists,
+                                     QObject *parent)
     : QObject(parent)
     , m_player(player)
     , m_settings(settings)
+    , m_playlists(playlists)
 {
     if (m_player)
         m_player->setTrackModel(&m_tracks);
@@ -52,6 +56,37 @@ LibraryController::LibraryController(PlayerController *player,
                 if (m_player)
                     m_player->refreshTrackInfo();
             });
+
+    if (m_playlists) {
+        connect(m_playlists, &PlaylistController::playlistTracksChanged, this,
+                [this](const QString &id) {
+                    if (m_playlistMode && id == m_activePlaylistId)
+                        reloadActivePlaylist();
+                });
+        connect(m_playlists, &PlaylistController::playlistRenamed, this,
+                [this](const QString &id) {
+                    if (m_playlistMode && id == m_activePlaylistId)
+                        emit viewChanged();
+                });
+        connect(m_playlists, &PlaylistController::playlistRemoved, this,
+                [this](const QString &id) {
+                    if (!m_playlistMode || id != m_activePlaylistId)
+                        return;
+                    leavePlaylistMode();
+                    if (m_player) {
+                        m_player->stop();
+                        m_player->setQueue({}, 0, 0, false);
+                    }
+                    if (!m_allFiles.isEmpty())
+                        setSelectedFolder(m_folder, false);
+                    else {
+                        m_currentFiles.clear();
+                        m_tracks.clear();
+                        m_metadataLoader.start({});
+                        emit tracksChanged();
+                    }
+                });
+    }
 }
 
 QString LibraryController::folderName() const
@@ -61,6 +96,40 @@ QString LibraryController::folderName() const
 
     const QString name = QFileInfo(m_folder).fileName();
     return name.isEmpty() ? m_folder : name;
+}
+
+QString LibraryController::viewTitle() const
+{
+    if (m_playlistMode && m_playlists) {
+        const QString name = m_playlists->name(m_activePlaylistId);
+        if (!name.isEmpty())
+            return name;
+        return tr("Playlist");
+    }
+    return folderName();
+}
+
+QString LibraryController::viewSubtitle() const
+{
+    if (m_playlistMode)
+        return tr("%1 tracks · playlist").arg(m_tracks.count());
+    return m_folder;
+}
+
+void LibraryController::leavePlaylistMode()
+{
+    if (!m_playlistMode && m_activePlaylistId.isEmpty())
+        return;
+
+    m_playlistMode = false;
+    m_activePlaylistId.clear();
+    if (m_playlists)
+        m_playlists->setCurrent({});
+    if (m_settings) {
+        m_settings->setLastMode(QStringLiteral("folder"));
+        m_settings->setLastPlaylistId({});
+    }
+    emit viewChanged();
 }
 
 void LibraryController::setStartupFolder(const QString &path, bool autoPlay)
@@ -81,6 +150,7 @@ void LibraryController::openFolder(const QUrl &url)
 void LibraryController::openFolderPath(const QString &path, bool autoPlay)
 {
     clearError();
+    leavePlaylistMode();
     m_restoreRequested = false;
     m_refreshRequested = false;
     m_openAutoPlay = autoPlay;
@@ -160,6 +230,7 @@ void LibraryController::playFolder(const QString &folder)
     if (m_allFiles.isEmpty())
         return;
 
+    leavePlaylistMode();
     clearError();
     setSelectedFolder(folder, false);
 
@@ -174,12 +245,126 @@ void LibraryController::playFolder(const QString &folder)
         m_player->setQueue(m_currentFiles, 0, 0, true);
 }
 
+void LibraryController::playPlaylist(const QString &id)
+{
+    if (!m_playlists || id.isEmpty())
+        return;
+
+    const QStringList tracks = m_playlists->tracks(id);
+    showPlaylist(id, tracks, 0, 0, true);
+}
+
+void LibraryController::showPlaylist(const QString &id, const QStringList &tracks,
+                                     int startIndex, qint64 positionMs,
+                                     bool autoPlay)
+{
+    if (!m_playlists)
+        return;
+
+    m_playlistMode = true;
+    m_activePlaylistId = id;
+    m_playlists->setCurrent(id);
+
+    m_currentFiles = tracks;
+    m_tracks.setFiles(QString(), tracks);
+    applyCachedMetadata();
+    startMetadataLoad(tracks);
+
+    if (m_player) {
+        if (tracks.isEmpty()) {
+            m_player->stop();
+            m_player->setQueue({}, 0, 0, false);
+        } else {
+            const int index = std::clamp(startIndex, 0,
+                                         static_cast<int>(tracks.size()) - 1);
+            m_player->setQueue(tracks, index, positionMs, autoPlay);
+        }
+    }
+
+    if (m_settings) {
+        m_settings->setLastMode(QStringLiteral("playlist"));
+        m_settings->setLastPlaylistId(id);
+    }
+
+    emit viewChanged();
+    emit tracksChanged();
+}
+
+void LibraryController::reloadActivePlaylist()
+{
+    if (!m_playlistMode || !m_playlists || m_activePlaylistId.isEmpty())
+        return;
+
+    const QStringList tracks = m_playlists->tracks(m_activePlaylistId);
+    if (tracks.isEmpty()) {
+        m_currentFiles.clear();
+        m_tracks.clear();
+        m_metadataLoader.start({});
+        if (m_player) {
+            m_player->stop();
+            m_player->setQueue({}, 0, 0, false);
+        }
+        emit viewChanged();
+        emit tracksChanged();
+        return;
+    }
+
+    const QString currentPath = m_player ? m_player->path() : QString();
+    const int currentIndex = tracks.indexOf(currentPath);
+    const int index = currentIndex >= 0 ? currentIndex : 0;
+    const qint64 position = currentIndex >= 0
+        ? (m_player ? m_player->positionMs() : 0) : 0;
+    const bool wasPlaying = m_player ? m_player->playing() : false;
+
+    m_currentFiles = tracks;
+    m_tracks.setFiles(QString(), tracks);
+    applyCachedMetadata();
+    startMetadataLoad(tracks);
+
+    if (m_player)
+        m_player->setQueue(tracks, index, position, wasPlaying);
+
+    if (m_settings) {
+        m_settings->setLastMode(QStringLiteral("playlist"));
+        m_settings->setLastPlaylistId(m_activePlaylistId);
+    }
+
+    emit viewChanged();
+    emit tracksChanged();
+}
+
 void LibraryController::playIndex(int index)
 {
     if (index < 0 || index >= m_currentFiles.size() || !m_player)
         return;
 
     m_player->setQueue(m_currentFiles, index, 0, true);
+}
+
+void LibraryController::playNext(int index)
+{
+    if (index < 0 || index >= m_currentFiles.size() || !m_player)
+        return;
+    m_player->playNext(m_currentFiles.at(index));
+}
+
+void LibraryController::addCurrentToPlaylist(const QString &id)
+{
+    if (!m_playlists || id.isEmpty())
+        return;
+    if (m_playlistMode) {
+        setError(tr("Switch to a folder view before adding a folder."));
+        return;
+    }
+
+    QStringList files = m_currentFiles;
+    if (files.isEmpty())
+        files = m_allFiles;
+    if (files.isEmpty()) {
+        setError(tr("There are no tracks to add."));
+        return;
+    }
+    m_playlists->addTracks(id, files);
 }
 
 void LibraryController::playFromIndex(int index)
@@ -189,6 +374,8 @@ void LibraryController::playFromIndex(int index)
 
 void LibraryController::nextFolder()
 {
+    if (m_playlistMode)
+        return;
     const QString next = m_folders.nextFolderPath(m_folder);
     if (!next.isEmpty())
         playFolder(next);
@@ -196,6 +383,8 @@ void LibraryController::nextFolder()
 
 void LibraryController::previousFolder()
 {
+    if (m_playlistMode)
+        return;
     const QString previous = m_folders.previousFolderPath(m_folder);
     if (!previous.isEmpty())
         playFolder(previous);
@@ -208,6 +397,23 @@ void LibraryController::restoreLastSession()
     m_refreshRequested = false;
     m_openAutoPlay = false;
 
+    if (m_settings && m_playlists
+        && m_settings->lastMode() == QStringLiteral("playlist")) {
+        const QString id = m_settings->lastPlaylistId();
+        const QStringList tracks = m_playlists->tracks(id);
+        if (!tracks.isEmpty()) {
+            int index = tracks.indexOf(m_settings->lastTrack());
+            if (index < 0)
+                index = 0;
+            const qint64 position = index >= 0
+                && tracks.at(index) == m_settings->lastTrack()
+                ? m_settings->lastPositionMs() : 0;
+            showPlaylist(id, tracks, index, position, false);
+            m_restoreRequested = false;
+            return;
+        }
+    }
+
     const QString lastFolder = m_settings ? m_settings->lastFolder() : QString();
     if (lastFolder.isEmpty()) {
         m_restoreRequested = false;
@@ -218,6 +424,11 @@ void LibraryController::restoreLastSession()
 
 void LibraryController::refresh()
 {
+    if (m_playlistMode) {
+        reloadActivePlaylist();
+        return;
+    }
+
     if (m_rootFolder.isEmpty()) {
         setError(tr("Open a folder first."));
         return;
@@ -329,6 +540,8 @@ void LibraryController::handleScanFailed(const QString &message)
 
 void LibraryController::setSelectedFolder(const QString &folder, bool autoPlay)
 {
+    leavePlaylistMode();
+
     QString target = folder;
     if (target.isEmpty() || filesUnder(target).isEmpty())
         target = m_rootFolder;

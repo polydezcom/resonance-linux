@@ -2,6 +2,7 @@
 #include "ui/controllers/app_settings.h"
 #include "ui/controllers/library_controller.h"
 #include "ui/controllers/player_controller.h"
+#include "ui/controllers/playlist_controller.h"
 
 #include <QGuiApplication>
 #include <QIcon>
@@ -19,7 +20,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("Resonance"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("resonance.local"));
     QCoreApplication::setApplicationName(QStringLiteral("Resonance"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.2.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.3.0"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Resonance"));
     QGuiApplication::setDesktopFileName(QStringLiteral("resonance"));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
@@ -33,7 +34,8 @@ int main(int argc, char *argv[])
 
     AppSettings appSettings;
     PlayerController player(&audioEngine, &appSettings);
-    LibraryController library(&player, &appSettings);
+    PlaylistController playlists;
+    LibraryController library(&player, &appSettings, &playlists);
 
     QString startupFolder;
     for (int i = 1; i < argc; ++i) {
@@ -47,6 +49,7 @@ int main(int argc, char *argv[])
 
     qmlRegisterSingletonInstance("Resonance", 1, 0, "Player", &player);
     qmlRegisterSingletonInstance("Resonance", 1, 0, "Library", &library);
+    qmlRegisterSingletonInstance("Resonance", 1, 0, "Playlists", &playlists);
     qmlRegisterSingletonInstance("Resonance", 1, 0, "AppSettings", &appSettings);
 
     QQmlApplicationEngine engine;

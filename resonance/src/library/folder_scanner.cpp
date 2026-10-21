@@ -1,44 +1,12 @@
 #include "library/folder_scanner.h"
 
-#include "library/audio_formats.h"
-#include "library/natural_sort.h"
+#include "library/audio_file_utils.h"
 
-#include <QDir>
-#include <QDirIterator>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QtConcurrent>
 
-#include <algorithm>
-
 namespace resonance {
-namespace {
-
-QStringList scanDirectory(const QString &root,
-                          const std::shared_ptr<std::atomic_bool> &cancelled)
-{
-    QStringList files;
-    QDirIterator iterator(root,
-                          QDir::Files | QDir::NoDotAndDotDot | QDir::NoSymLinks,
-                          QDirIterator::Subdirectories);
-
-    while (iterator.hasNext()) {
-        if (cancelled && cancelled->load(std::memory_order_relaxed))
-            break;
-
-        const QString path = iterator.next();
-        if (isSupportedAudioPath(path))
-            files.append(path);
-    }
-
-    std::sort(files.begin(), files.end(),
-              [](const QString &left, const QString &right) {
-                  return naturalLess(left, right);
-              });
-    return files;
-}
-
-} // namespace
 
 FolderScanner::FolderScanner(QObject *parent)
     : QObject(parent)
@@ -111,7 +79,7 @@ void FolderScanner::beginScan(const QString &root)
             });
 
     watcher->setFuture(QtConcurrent::run(
-        [root, token] { return scanDirectory(root, token); }));
+        [root, token] { return collectAudioFiles(root, token.get()); }));
 }
 
 void FolderScanner::setScanning(bool scanning)

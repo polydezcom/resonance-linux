@@ -64,6 +64,7 @@ public:
 
     Q_INVOKABLE void play(const QString &path, const QString &title);
     Q_INVOKABLE void playQueueIndex(int index);
+    Q_INVOKABLE void playNext(const QString &path);
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
     Q_INVOKABLE void togglePlayPause();

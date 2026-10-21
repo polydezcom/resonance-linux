@@ -96,9 +96,14 @@ void TrackListModel::setFiles(const QString &root, const QStringList &files)
     const QDir rootDir(root);
     for (const QString &file : files) {
         const QFileInfo info(file);
-        QString folder = rootDir.relativeFilePath(info.absolutePath());
-        if (folder == QStringLiteral("."))
-            folder.clear();
+        QString folder;
+        if (root.isEmpty()) {
+            folder = info.dir().dirName();
+        } else {
+            folder = rootDir.relativeFilePath(info.absolutePath());
+            if (folder == QStringLiteral("."))
+                folder.clear();
+        }
 
         Entry entry;
         entry.path = file;

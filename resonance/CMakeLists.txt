@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(resonance VERSION 0.2.0 LANGUAGES C CXX)
+project(resonance VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -94,6 +94,8 @@ target_link_libraries(resonance_core
 # ---------------------------------------------------------------------------
 
 add_library(resonance_library STATIC
+    src/library/audio_file_utils.cpp
+    src/library/audio_file_utils.h
     src/library/audio_formats.h
     src/library/cover_art_cache.cpp
     src/library/cover_art_cache.h
@@ -105,6 +107,10 @@ add_library(resonance_library STATIC
     src/library/metadata_reader.h
     src/library/natural_sort.cpp
     src/library/natural_sort.h
+    src/library/playlist_io.cpp
+    src/library/playlist_io.h
+    src/library/playlist_manager.cpp
+    src/library/playlist_manager.h
     src/library/track_metadata.h
 )
 
@@ -155,6 +161,8 @@ qt_add_executable(resonance
     src/ui/controllers/library_controller.h
     src/ui/controllers/player_controller.cpp
     src/ui/controllers/player_controller.h
+    src/ui/controllers/playlist_controller.cpp
+    src/ui/controllers/playlist_controller.h
 )
 
 qt_add_qml_module(resonance
@@ -167,6 +175,7 @@ qt_add_qml_module(resonance
         src/ui/qml/controls/IconButton.qml
         src/ui/qml/controls/ResonanceButton.qml
         src/ui/qml/controls/ResonanceSlider.qml
+        src/ui/qml/controls/ResonanceTextField.qml
         src/ui/qml/controls/SectionLabel.qml
         src/ui/qml/components/HeaderBar.qml
         src/ui/qml/components/FolderTreePane.qml
@@ -174,11 +183,14 @@ qt_add_qml_module(resonance
         src/ui/qml/components/Sidebar.qml
         src/ui/qml/components/TrackListPane.qml
         src/ui/qml/components/TransportBar.qml
+        src/ui/qml/components/PlaylistNamePopup.qml
     SOURCES
         src/ui/controllers/track_list_model.cpp
         src/ui/controllers/track_list_model.h
         src/ui/controllers/folder_tree_model.cpp
         src/ui/controllers/folder_tree_model.h
+        src/ui/controllers/playlist_list_model.cpp
+        src/ui/controllers/playlist_list_model.h
 )
 
 target_include_directories(resonance PRIVATE

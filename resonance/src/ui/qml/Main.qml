@@ -50,10 +50,14 @@ ApplicationWindow {
 
         HeaderBar {
             Layout.fillWidth: true
-            title: Library.folder.length > 0 ? Library.folderName : qsTr("Your music")
-            detail: Library.folder.length > 0
-                    ? Library.folder
-                    : qsTr("Folder-first, fully offline, no accounts.")
+            title: Library.playlistMode
+                   ? Library.viewTitle
+                   : (Library.folder.length > 0 ? Library.viewTitle : qsTr("Your music"))
+            detail: Library.playlistMode
+                    ? Library.viewSubtitle
+                    : (Library.folder.length > 0
+                       ? Library.viewSubtitle
+                       : qsTr("Folder-first, fully offline, no accounts."))
             scanning: Library.scanning
             toolsOpen: root.toolsOpen
             onOpenFolderRequested: folderDialog.open()
@@ -208,7 +212,10 @@ ApplicationWindow {
 
         onDropped: function(drop) {
             dropOverlay.visible = false
-            Library.openUrls(drop.urls)
+            if (Library.playlistMode && Playlists.hasCurrent)
+                Playlists.addUrls(Playlists.currentId, drop.urls)
+            else
+                Library.openUrls(drop.urls)
             drop.acceptProposedAction()
         }
     }
@@ -244,7 +251,9 @@ ApplicationWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Drop to play")
+                    text: Library.playlistMode && Playlists.hasCurrent
+                          ? qsTr("Drop to add to “%1”").arg(Playlists.currentName)
+                          : qsTr("Drop to play")
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: 20
@@ -254,7 +263,9 @@ ApplicationWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Folders are scanned recursively. Tracks play in natural order.")
+                    text: Library.playlistMode && Playlists.hasCurrent
+                          ? qsTr("Files and folders are added to the current playlist.")
+                          : qsTr("Folders are scanned recursively. Tracks play in natural order.")
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: 12

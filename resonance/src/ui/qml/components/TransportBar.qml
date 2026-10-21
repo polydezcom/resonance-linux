@@ -153,7 +153,7 @@ Rectangle {
                                      ? qsTr("Repeat off")
                                      : Player.repeatMode === 1
                                        ? qsTr("Repeat track")
-                                       : qsTr("Repeat folder")
+                                       : qsTr("Repeat all")
                 }
 
                 Item { Layout.preferredWidth: 4 }
